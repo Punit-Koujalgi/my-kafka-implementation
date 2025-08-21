@@ -31,7 +31,6 @@ class KafkaServer:
             print("received Message!", str(request))
             message_size = 19
             correlation_id = 7
-            time.sleep(5)
             writer.write(message_size.to_bytes(4) + correlation_id.to_bytes(4))
             await writer.drain()
             print("Sent response!")
