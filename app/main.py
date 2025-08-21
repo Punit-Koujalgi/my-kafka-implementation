@@ -21,26 +21,31 @@ class KafkaServer:
     async def _handle_client_connection_cb(self, reader: StreamReader, writer: StreamWriter) -> None:
         print("Client connected")
         async with KafkaConnectionHandler(reader, writer) as handler:
-            #while True:
-                # request: Request = await handler.receive_request()
-                # response: Response = handle_request(request)
-                # await handler.send_response(response)
+            while True:
+                request: Request = await handler.receive_request()
+                response: Response = handle_request(request)
+                await handler.send_response(response)
+                break
             # When testing below code with nc, always use with -q argument which closes the socket after EOF on stdin
             # ex: echo "test" | nc -q 1  localhost 9092
-            request = await reader.read()
-            print("received Message!", str(request))
-            message_size = 19
-            correlation_id = 7
-            writer.write(message_size.to_bytes(4) + correlation_id.to_bytes(4))
-            await writer.drain()
-            print("Sent response!")
+            # request = await reader.read()
+            # print("received Message!")
+            # message_size = 4
+            # correlation_id = 7
+            # writer.write(message_size.to_bytes(4) + correlation_id.to_bytes(4))
+            # await writer.drain()
+            # print("Sent response!")
         
         
 
-@dataclass(frozen=True)
+#@dataclass(frozen=True)
 class KafkaConnectionHandler:
-    _reader: StreamReader
-    _writer: StreamWriter
+    # _reader: StreamReader
+    # _writer: StreamWriter
+
+    def __init__(self, reader: StreamReader, writer: StreamWriter) -> None:
+        self._reader = reader
+        self._writer = writer
 
     async def receive_request(self) -> Request:
         message_size = int.from_bytes(await self._reader.readexactly(4))
