@@ -7,7 +7,7 @@ from typing import Self
 import time 
 
 from .protocol.request import Request, decode_request
-from .protocol.response import Response, handle_request
+from .protocol.response import Response #, handle_request
 
 
 class KafkaServer:
