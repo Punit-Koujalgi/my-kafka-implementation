@@ -3,8 +3,6 @@ from dataclasses import dataclass
 from typing import Literal
 from abc import ABC, abstractmethod
 
-from urllib3 import request
-
 from .protocol import *
 from .request import RequestHeader, Request
 
