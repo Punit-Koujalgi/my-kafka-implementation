@@ -25,7 +25,7 @@ class KafkaServer:
                 request: Request = await handler.receive_request()
                 response: Response = handle_request(request)
                 await handler.send_response(response)
-                break
+                #break
             # When testing below code with nc, always use with -q argument which closes the socket after EOF on stdin
             # ex: echo "test" | nc -q 1  localhost 9092
             # request = await reader.read()
