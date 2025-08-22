@@ -41,7 +41,10 @@ def handle_request(request: Request) -> Response:
         case ApiKey.API_VERSIONS:
             from app.apis.api_versions import ApiVersionsRequest, handle_api_versions_request
             request_class, request_handler = ApiVersionsRequest, handle_api_versions_request
+        case ApiKey.DESCRIBE_TOPIC_PARTITIONS:
+            from app.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
+            request_class, request_handler = DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
 
     assert isinstance(request, request_class)
-    return request_handler(request)
+    return request_handler(request) # type: ignore
 

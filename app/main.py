@@ -4,7 +4,7 @@ from asyncio import StreamReader, StreamWriter
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Self
-import time 
+import time
 
 from .protocol.request import Request, decode_request
 from .protocol.response import Response, handle_request

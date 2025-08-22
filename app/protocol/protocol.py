@@ -1,24 +1,29 @@
 
 from typing import Callable, Self, Protocol
 import enum
+from uuid import UUID
 
 # --- typing declarations
 class Readable(Protocol):
     def read(self, n: int, /) -> bytes:
         ...
-
+'''
 class Encodable(Protocol):
     def encode(self) -> bytes:
         ...
 
+'''
+
 type DecodeFunction[T] = Callable[[Readable], T]
-type EncodeFunction[T: Encodable] = Callable[[T], bytes]
+type EncodeFunction[T] = Callable[[T], bytes]
+#type EncodeFunction[T: Encodable] = Callable[[T], bytes]
 
 # ---
 
 @enum.unique
 class ApiKey(enum.IntEnum):
     API_VERSIONS = 18
+    DESCRIBE_TOPIC_PARTITIONS = 75
 
     @classmethod
     def decode(cls, readable : Readable) -> Self:
@@ -31,7 +36,9 @@ class ApiKey(enum.IntEnum):
 @enum.unique
 class ErrorCode(enum.IntEnum):
     NONE = 0
+    UNKNOWN_TOPIC_OR_PARTITION = 3
     UNSUPPORTED_VERSION = 35
+    UNKNOWN_TOPIC_ID = 100
 
     def encode(self) -> bytes:
         return encode_int16(self)
@@ -112,9 +119,54 @@ def decode_compact_array[T](readable: Readable, decode_function: DecodeFunction[
     n = decode_unsigned_varint(readable)
     return [] if n == 0 else [decode_function(readable) for _ in range(n - 1)]
 
-def encode_compact_array[T: Encodable](items: list[T], encode_function: EncodeFunction[T] | None = None) -> bytes:
+def encode_compact_array[T](items: list[T], encode_function: EncodeFunction[T] | None = None) -> bytes:
     n = len(items) + 1
     return encode_unsigned_varint(n) + \
-        b"".join(encode_function(item) if encode_function else item.encode() for item in items)
+        b"".join(encode_function(item) if encode_function else item.encode() for item in items) # type: ignore
+
+def decode_uuid(readable: Readable) -> UUID:
+    return UUID(bytes=readable.read(16))
+
+def encode_uuid(u: UUID) -> bytes:
+    return u.bytes
+
+def decode_varint(readable: Readable) -> int:
+    n = decode_unsigned_varint(readable)
+    return -((n >> 1) + 1) if (n & 1) else (n >> 1)
 
 
+def encode_varint(n: int) -> bytes:
+    return encode_unsigned_varint((n << 1) ^ (n >> 31))
+
+
+def decode_varlong(readable: Readable) -> int:
+    return decode_varint(readable)
+
+
+def encode_varlong(n: int) -> bytes:
+    return encode_unsigned_varint((n << 1) ^ (n >> 63))
+
+# -- From record_batch ---
+def decode_int64(readable: Readable) -> int:
+    return int.from_bytes(readable.read(8), signed=True)
+
+def encode_int64(n: int) -> bytes:
+    return n.to_bytes(8, signed=True)
+
+def decode_uint32(readable: Readable) -> int:
+    return int.from_bytes(readable.read(4))
+
+def encode_uint32(n: int) -> bytes:
+    return n.to_bytes(4)
+
+def decode_array[T](readable: Readable, decode_function: DecodeFunction[T]) -> list[T]:
+    n = decode_int32(readable)
+    return [] if n < 0 else [decode_function(readable) for _ in range(n)]
+
+
+def encode_array[T](arr: list[T], encode_function: EncodeFunction[T] | None = None) -> bytes:
+    return encode_int32(len(arr)) + b"".join(
+        t.encode() if encode_function is None else encode_function(t) for t in arr # type: ignore
+    )
+
+# ---
