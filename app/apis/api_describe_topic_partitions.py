@@ -134,7 +134,7 @@ def handle_describe_topic_partitions_request(request: DescribeTopicPartitionsReq
     return DescribePartitionsResponse(
         header=ResponseHeader.from_request_header(request.header),
         throttle_time_ms=0,
-        topics=[],
+        topics=[_handle_topic_request(topic_request) for topic_request in request.topics],
     )
 
 def _handle_topic_request(topic_request: RequestTopic) -> ResponseTopic:
@@ -158,4 +158,3 @@ def _handle_topic_request(topic_request: RequestTopic) -> ResponseTopic:
     )
 
 
-    
