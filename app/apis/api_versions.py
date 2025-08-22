@@ -74,6 +74,7 @@ def handle_api_versions_request(request: ApiVersionsRequest) -> ApiVersionsRespo
         api_keys=[
             ApiVersion(ApiKey.API_VERSIONS, min_version=4, max_version=4),
             ApiVersion(ApiKey.DESCRIBE_TOPIC_PARTITIONS, min_version=0, max_version=0),
+            ApiVersion(ApiKey.FETCH, min_version=16, max_version=16),
         ],
         throttle_time_ms=0
     )

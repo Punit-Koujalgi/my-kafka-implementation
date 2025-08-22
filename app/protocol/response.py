@@ -44,6 +44,9 @@ def handle_request(request: Request) -> Response:
         case ApiKey.DESCRIBE_TOPIC_PARTITIONS:
             from app.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
             request_class, request_handler = DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
+        case ApiKey.FETCH:
+            from app.apis.api_fetch import FetchRequest, handle_fetch_request
+            request_class, request_handler = FetchRequest, handle_fetch_request
 
     assert isinstance(request, request_class)
     return request_handler(request) # type: ignore

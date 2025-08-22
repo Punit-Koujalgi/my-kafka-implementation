@@ -47,6 +47,9 @@ def decode_request(readable: Readable) -> Request:
         case ApiKey.DESCRIBE_TOPIC_PARTITIONS:
             from app.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest
             request_class = DescribeTopicPartitionsRequest
+        case ApiKey.FETCH:
+            from app.apis.api_fetch import FetchRequest
+            request_class = FetchRequest
             
     # if request_class is None:
     #     raise ValueError(f"Unknown request API key {header.request_api_key}")

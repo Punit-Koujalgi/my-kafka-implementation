@@ -22,6 +22,7 @@ type EncodeFunction[T] = Callable[[T], bytes]
 
 @enum.unique
 class ApiKey(enum.IntEnum):
+    FETCH = 1
     API_VERSIONS = 18
     DESCRIBE_TOPIC_PARTITIONS = 75
 
