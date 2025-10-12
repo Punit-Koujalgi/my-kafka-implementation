@@ -22,7 +22,9 @@ type EncodeFunction[T] = Callable[[T], bytes]
 
 @enum.unique
 class ApiKey(enum.IntEnum):
+    PRODUCE = 0
     FETCH = 1
+    CREATE_TOPICS = 19
     API_VERSIONS = 18
     DESCRIBE_TOPIC_PARTITIONS = 75
 
@@ -38,6 +40,8 @@ class ApiKey(enum.IntEnum):
 class ErrorCode(enum.IntEnum):
     NONE = 0
     UNKNOWN_TOPIC_OR_PARTITION = 3
+    INVALID_TOPIC_EXCEPTION = 17
+    TOPIC_ALREADY_EXISTS = 36
     UNSUPPORTED_VERSION = 35
     UNKNOWN_TOPIC_ID = 100
 
@@ -77,6 +81,12 @@ def encode_compact_nullable_string(s: str | None) -> bytes:
     if s is None:
         return encode_unsigned_varint(0)
     return encode_unsigned_varint(len(s) + 1) + s.encode()
+
+def decode_compact_nullable_string(readable: Readable) -> str | None:
+    n = decode_unsigned_varint(readable)
+    if n == 0:
+        return None
+    return readable.read(n - 1).decode()
 
 def decode_tagged_fields(readable: Readable) -> None:
     assert readable.read(1) == b'\x00', "Found unexpected tagged fields"  # Placeholder for tagged fields, currently not implemented
@@ -164,6 +174,15 @@ def decode_array[T](readable: Readable, decode_function: DecodeFunction[T]) -> l
     n = decode_int32(readable)
     return [] if n < 0 else [decode_function(readable) for _ in range(n)]
 
+def decode_compact_nullable_bytes(readable: Readable) -> bytes | None:
+    n = decode_unsigned_varint(readable)
+    if n == 0:
+        return None
+    length = n - 1
+    data = readable.read(length)
+    if len(data) < length:
+        raise EOFError(f"Expected {length} bytes but got {len(data)} bytes while decoding compact nullable bytes")
+    return data
 
 def encode_array[T](arr: list[T], encode_function: EncodeFunction[T] | None = None) -> bytes:
     return encode_int32(len(arr)) + b"".join(

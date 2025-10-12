@@ -41,6 +41,9 @@ def decode_request(readable: Readable) -> Request:
     #request_class = None
 
     match header.request_api_key:
+        case ApiKey.PRODUCE:
+            from app.apis.api_produce import ProduceRequest
+            request_class = ProduceRequest
         case ApiKey.API_VERSIONS:
             from app.apis.api_versions import ApiVersionsRequest
             request_class = ApiVersionsRequest
@@ -50,6 +53,9 @@ def decode_request(readable: Readable) -> Request:
         case ApiKey.FETCH:
             from app.apis.api_fetch import FetchRequest
             request_class = FetchRequest
+        case ApiKey.CREATE_TOPICS:
+            from app.apis.api_create_topics import CreateTopicsRequest
+            request_class = CreateTopicsRequest
             
     # if request_class is None:
     #     raise ValueError(f"Unknown request API key {header.request_api_key}")

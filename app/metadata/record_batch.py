@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
@@ -83,8 +84,16 @@ def read_record_batches(topic_name: str, partition_index: int) -> Generator[Reco
     else:
         record_batch_class = DefaultRecordBatch
 
-    with open(
-        f"/tmp/kraft-combined-logs/{topic_name}-{partition_index}/00000000000000000000.log", mode="rb"
-    ) as reader:
-        while reader.peek():
-            yield record_batch_class.decode(reader)
+    log_file_path = f"/tmp/kraft-combined-logs/{topic_name}-{partition_index}/00000000000000000000.log"
+
+    if not os.path.exists(log_file_path):
+        os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+        open(log_file_path, 'a').close()
+    else:
+        with open(
+            log_file_path, mode="rb"
+        ) as reader:
+            while reader.peek():
+                yield record_batch_class.decode(reader)
+
+

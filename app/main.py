@@ -22,8 +22,14 @@ class KafkaServer:
         print("Client connected")
         async with KafkaConnectionHandler(reader, writer) as handler:
             while True:
-                request: Request = await handler.receive_request()
+                try:
+                    request: Request = await handler.receive_request()
+                    print(f"Received request: {request}")
+                except Exception as _:
+                    break
+
                 response: Response = handle_request(request)
+                print(f"Sending response: {response}")
                 await handler.send_response(response)
                 #break
             # When testing below code with nc, always use with -q argument which closes the socket after EOF on stdin
@@ -58,11 +64,13 @@ class KafkaConnectionHandler:
         await self._writer.drain()
 
     async def __aenter__(self) -> Self:
+        print(f"+++++++++++ New Connection: {self._writer.get_extra_info('peername')} +++++++++++")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         self._writer.close()
         await self._writer.wait_closed()
+        print(f"----------- Connection Closed: {self._writer.get_extra_info('peername')} -----------")
 
 if __name__ == "__main__":
     asyncio.run(KafkaServer().run())
