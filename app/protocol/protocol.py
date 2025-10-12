@@ -24,6 +24,7 @@ type EncodeFunction[T] = Callable[[T], bytes]
 class ApiKey(enum.IntEnum):
     PRODUCE = 0
     FETCH = 1
+    METADATA = 3
     CREATE_TOPICS = 19
     API_VERSIONS = 18
     DESCRIBE_TOPIC_PARTITIONS = 75
@@ -188,5 +189,11 @@ def encode_array[T](arr: list[T], encode_function: EncodeFunction[T] | None = No
     return encode_int32(len(arr)) + b"".join(
         t.encode() if encode_function is None else encode_function(t) for t in arr # type: ignore
     )
+
+def encode_compact_nullable_bytes(data: bytes | None) -> bytes:
+    """Encode compact nullable bytes."""
+    if data is None:
+        return encode_unsigned_varint(0)
+    return encode_unsigned_varint(len(data) + 1) + data
 
 # ---

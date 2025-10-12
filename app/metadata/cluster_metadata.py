@@ -46,6 +46,10 @@ class ClusterMetadata:
         partitions = self.get_topic_partitions(topic_id)
         return partitions is not None and partition_index in partitions
 
+    def get_all_topics(self) -> list[tuple[str, UUID]]:
+        """Get all topics as a list of (topic_name, topic_id) tuples."""
+        return [(name, topic_id) for name, topic_id in self._name_to_id.items()]
+
     def _add_partition_record(self, record: PartitionRecord) -> None:
         self._id_to_partitions[record.topic_id].append(record.partition_id)
 

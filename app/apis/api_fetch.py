@@ -114,7 +114,7 @@ class PartitionData:
 	log_start_offset: int = 0
 	aborted_transactions: list[AbortedTransaction] = field(default_factory=list)
 	preferred_read_replica: int = 0
-	records: list[RecordBatch] = field(default_factory=list)
+	records: list[RecordBatch] = field(default_factory=list) # Always has 1 element
 
 	def encode(self) -> bytes:
 		encoded_records = b"".join(record.encode() for record in self.records)

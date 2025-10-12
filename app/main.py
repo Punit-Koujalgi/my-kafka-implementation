@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Self
 import time
+from pprint import pprint
 
-from .protocol.request import Request, decode_request
-from .protocol.response import Response, handle_request
+from app.protocol.request import Request, decode_request
+from app.protocol.response import Response, handle_request
 
 
 class KafkaServer:
@@ -24,12 +25,12 @@ class KafkaServer:
             while True:
                 try:
                     request: Request = await handler.receive_request()
-                    print(f"Received request: {request}")
+                    pprint(f"Received request: {request}")
                 except Exception as _:
                     break
 
                 response: Response = handle_request(request)
-                print(f"Sending response: {response}")
+                pprint(f"Sending response: {response}")
                 await handler.send_response(response)
                 #break
             # When testing below code with nc, always use with -q argument which closes the socket after EOF on stdin

@@ -46,6 +46,10 @@ def handle_request(request: Request) -> Response:
             from app.apis.api_versions import ApiVersionsRequest, handle_api_versions_request
             request_class, request_handler = ApiVersionsRequest, handle_api_versions_request
 
+        case ApiKey.METADATA:
+            from app.apis.api_metadata import MetadataRequest, handle_metadata_request
+            request_class, request_handler = MetadataRequest, handle_metadata_request
+
         case ApiKey.DESCRIBE_TOPIC_PARTITIONS:
             from app.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
             request_class, request_handler = DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request

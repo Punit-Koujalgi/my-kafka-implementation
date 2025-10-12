@@ -47,6 +47,9 @@ def decode_request(readable: Readable) -> Request:
         case ApiKey.API_VERSIONS:
             from app.apis.api_versions import ApiVersionsRequest
             request_class = ApiVersionsRequest
+        case ApiKey.METADATA:
+            from app.apis.api_metadata import MetadataRequest
+            request_class = MetadataRequest
         case ApiKey.DESCRIBE_TOPIC_PARTITIONS:
             from app.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest
             request_class = DescribeTopicPartitionsRequest
