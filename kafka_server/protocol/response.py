@@ -39,27 +39,27 @@ class Response(ABC):
 def handle_request(request: Request) -> Response:
     match request.header.request_api_key:
         case ApiKey.PRODUCE:
-            from app.apis.api_produce import ProduceRequest, handle_produce_request
+            from kafka_server.apis.api_produce import ProduceRequest, handle_produce_request
             request_class, request_handler = ProduceRequest, handle_produce_request
 
         case ApiKey.API_VERSIONS:
-            from app.apis.api_versions import ApiVersionsRequest, handle_api_versions_request
+            from kafka_server.apis.api_versions import ApiVersionsRequest, handle_api_versions_request
             request_class, request_handler = ApiVersionsRequest, handle_api_versions_request
 
         case ApiKey.METADATA:
-            from app.apis.api_metadata import MetadataRequest, handle_metadata_request
+            from kafka_server.apis.api_metadata import MetadataRequest, handle_metadata_request
             request_class, request_handler = MetadataRequest, handle_metadata_request
 
         case ApiKey.DESCRIBE_TOPIC_PARTITIONS:
-            from app.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
+            from kafka_server.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
             request_class, request_handler = DescribeTopicPartitionsRequest, handle_describe_topic_partitions_request
             
         case ApiKey.FETCH:
-            from app.apis.api_fetch import FetchRequest, handle_fetch_request
+            from kafka_server.apis.api_fetch import FetchRequest, handle_fetch_request
             request_class, request_handler = FetchRequest, handle_fetch_request
 
         case ApiKey.CREATE_TOPICS:
-            from app.apis.api_create_topics import CreateTopicsRequest, handle_create_topics_request
+            from kafka_server.apis.api_create_topics import CreateTopicsRequest, handle_create_topics_request
             request_class, request_handler = CreateTopicsRequest, handle_create_topics_request
 
     assert isinstance(request, request_class)

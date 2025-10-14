@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import Self
 from uuid import UUID
 
-from app.protocol.protocol import *
+from kafka_server.protocol.protocol import *
 
 
 class Record(ABC):

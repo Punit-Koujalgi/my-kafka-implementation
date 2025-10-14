@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Generator, Self
 
-from app.protocol.protocol import *
+from kafka_server.protocol.protocol import *
 from .record import DefaultRecord, MetadataRecord, Record
 
 

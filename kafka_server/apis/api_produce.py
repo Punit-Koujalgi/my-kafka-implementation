@@ -3,10 +3,10 @@ import io
 import os
 import typing
 
-from app.protocol.request import Request, RequestHeader
-from app.protocol.response import Response, ResponseHeader
-from app.metadata.cluster_metadata import ClusterMetadata
-from app.protocol.protocol import *
+from kafka_server.protocol.request import Request, RequestHeader
+from kafka_server.protocol.response import Response, ResponseHeader
+from kafka_server.metadata.cluster_metadata import ClusterMetadata
+from kafka_server.protocol.protocol import *
 
 
 def get_log_file_path(topic_name: str, partition_index: int) -> str:

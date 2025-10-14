@@ -12,7 +12,7 @@ from io import BytesIO
 # Add the app directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.protocol.protocol import *
+from kafka_server.protocol.protocol import *
 
 
 def test_simple_connection():
@@ -22,7 +22,7 @@ def test_simple_connection():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.connect(("localhost", 9092))
-        print("✓ Connected to Kafka broker")
+        print("Connected to Kafka broker")
         
         # Create a simple API_VERSIONS request (version 4)
         # Header: api_key(2) + api_version(2) + correlation_id(4) + client_id + tagged_fields
@@ -48,45 +48,45 @@ def test_simple_connection():
         print(f"Request hex: {message.hex()}")
         
         sock.send(message)
-        print("✓ Request sent")
+        print("Request sent")
         
         # Try to read response length
         try:
             length_bytes = sock.recv(4)
             if len(length_bytes) != 4:
-                print(f"✗ Expected 4 bytes for length, got {len(length_bytes)}")
+                print(f"Expected 4 bytes for length, got {len(length_bytes)}")
                 return
             
             response_length = struct.unpack(">I", length_bytes)[0]
-            print(f"✓ Response length: {response_length} bytes")
+            print(f"Response length: {response_length} bytes")
             
             # Read response body
             response_body = b""
             while len(response_body) < response_length:
                 chunk = sock.recv(response_length - len(response_body))
                 if not chunk:
-                    print("✗ Connection closed while reading response")
+                    print("Connection closed while reading response")
                     return
                 response_body += chunk
             
-            print(f"✓ Response received: {len(response_body)} bytes")
+            print(f"Response received: {len(response_body)} bytes")
             print(f"Response hex: {response_body.hex()}")
             
             # Parse response header
             readable = BytesIO(response_body)
             correlation_id = decode_int32(readable)
-            print(f"✓ Correlation ID: {correlation_id}")
+            print(f"Correlation ID: {correlation_id}")
             
             if correlation_id == 1:
-                print("✓ Correlation ID matches!")
+                print("Correlation ID matches!")
             else:
-                print(f"✗ Correlation ID mismatch: expected 1, got {correlation_id}")
+                print(f"Correlation ID mismatch: expected 1, got {correlation_id}")
                 
         except Exception as e:
-            print(f"✗ Error reading response: {e}")
+            print(f"Error reading response: {e}")
             
     except Exception as e:
-        print(f"✗ Connection error: {e}")
+        print(f"Connection error: {e}")
     finally:
         sock.close()
 
