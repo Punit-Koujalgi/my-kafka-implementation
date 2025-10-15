@@ -37,9 +37,9 @@ def connect_to_server():
 def convert_topic_name_to_uuid(topic_name: str) -> UUID:
     """Convert topic name to UUID"""
 
-    describe_request = create_metadata_request([topic_name])
+    describe_request = create_metadata_request_v1([topic_name])
     response = ServerConnector().send(describe_request)
-    parsed_response = parse_metadata_response(response)
+    parsed_response = parse_metadata_response_v1(response)
 
     return parsed_response[topic_name]['topic_id'] # type: ignore
 

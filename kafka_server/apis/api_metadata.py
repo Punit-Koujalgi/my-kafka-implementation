@@ -3,7 +3,7 @@ from typing import Self
 from uuid import UUID
 
 from kafka_server.metadata.cluster_metadata import ClusterMetadata
-from kafka_server.protocol import *
+from kafka_server.protocol.protocol import *
 from kafka_server.protocol.request import Request, RequestHeader
 from kafka_server.protocol.response import Response, ResponseHeader
 
@@ -210,7 +210,7 @@ def handle_metadata_request(request: MetadataRequest) -> MetadataResponse:
         header=ResponseHeader.from_request_header(request.header),
         throttle_time_ms=0,
         brokers=brokers,
-        cluster_id="test-cluster",
+        cluster_id="punit-kafka-cluster",
         controller_id=0,
         topics=topics
     )

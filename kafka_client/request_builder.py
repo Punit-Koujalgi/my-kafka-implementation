@@ -1,6 +1,6 @@
 
 
-from uuid import UUID
+from uuid import UUID, uuid4
 from io import BytesIO
 
 import sys
@@ -8,9 +8,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from kafka_server.protocol.protocol import *
-from kafka_client.client_utilities import *
 
-def create_api_versions_request() -> bytes:
+def create_api_versions_request_v1() -> bytes:
     """Create an API_VERSIONS request."""
     # Request header
     api_key = 18  # API_VERSIONS
@@ -37,7 +36,7 @@ def create_api_versions_request() -> bytes:
     return encode_int32(len(request)) + request
 
 
-def create_create_topics_request(topic_name: str, num_partitions: int = 1) -> bytes:
+def create_create_topics_request_v1(topic_name: str, num_partitions: int = 1) -> bytes:
     """Create a CREATE_TOPICS request."""
     # Request header
     api_key = 19  # CREATE_TOPICS
@@ -81,7 +80,7 @@ def create_create_topics_request(topic_name: str, num_partitions: int = 1) -> by
     return encode_int32(len(request)) + request
 
 
-def create_describe_topics_request(topic_name: str) -> bytes:
+def create_describe_topics_request_v1(topic_name: str) -> bytes:
     """Create a DESCRIBE_TOPIC_PARTITIONS request."""
     # Request header
     api_key = 75  # DESCRIBE_TOPIC_PARTITIONS
@@ -115,7 +114,7 @@ def create_describe_topics_request(topic_name: str) -> bytes:
     return encode_int32(len(request)) + request
 
 
-def create_metadata_request(topic_names: list[str] | None = None) -> bytes:
+def create_metadata_request_v1(topic_names: list[str] | None = None) -> bytes:
     """Create a METADATA request."""
     # Request header
     api_key = 3  # METADATA
@@ -163,10 +162,10 @@ def create_metadata_request(topic_names: list[str] | None = None) -> bytes:
 
 
 
-def create_fetch_request(topic_name, partition: int, fetch_offset: int) -> bytes:
+def create_fetch_request_v1(topic_name, partition: int, fetch_offset: int) -> bytes:
 
     # convert topic_name to UUID
-    topic_id: UUID = convert_topic_name_to_uuid(topic_name)
+    topic_id = UUID()
 
     """Create a FETCH request."""
     # Request header
@@ -220,7 +219,7 @@ def create_fetch_request(topic_name, partition: int, fetch_offset: int) -> bytes
     return encode_int32(len(request)) + request
 
 
-def create_produce_request(topic_name: str, partition: int, records: list[tuple[str, str]]) -> bytes:
+def create_produce_request_v1(topic_name: str, partition: int, records: list[tuple[str, str]]) -> bytes:
     """Create a PRODUCE request."""
 
     # Convert records to DefaultRecordBatch with key and value from dictionary
@@ -299,6 +298,248 @@ def create_produce_request(topic_name: str, partition: int, records: list[tuple[
 
     request = header + body
     return encode_int32(len(request)) + request
+
+
+# V2 Functions - Direct server integration for UI
+from kafka_server.protocol.request import RequestHeader
+from kafka_server.protocol.protocol import ApiKey
+from kafka_server.apis.api_versions import ApiVersionsRequest
+from kafka_server.apis.api_create_topics import CreateTopicsRequest, CreatableTopic
+from kafka_server.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest, RequestTopic
+from kafka_server.apis.api_metadata import MetadataRequest, MetadataRequestTopic
+from kafka_server.apis.api_fetch import FetchRequest, FetchTopic, FetchPartition
+from kafka_server.apis.api_produce import ProduceRequest, TopicProduceData, PartitionProduceData
+from kafka_server.metadata.record_batch import DefaultRecordBatch
+from kafka_server.metadata.record import DefaultRecord
+from .api import *
+
+def create_api_versions_request() -> ApiVersionsRequest:
+    """Create an API_VERSIONS request for UI."""
+    header = RequestHeader(
+        request_api_key=ApiKey.API_VERSIONS,
+        request_api_version=4,
+        correlation_id=1,
+        client_id=None
+    )
+    return ApiVersionsRequest(
+        header=header,
+        client_software_name="kafka-ui-client",
+        client_software_version="1.0.0"
+    )
+
+
+def create_create_topics_request(topics_data: list[dict]) -> CreateTopicsRequest:
+    """Create a CREATE_TOPICS request for UI."""
+    header = RequestHeader(
+        request_api_key=ApiKey.CREATE_TOPICS,
+        request_api_version=7,
+        correlation_id=2,
+        client_id=None
+    )
+    
+    topics = []
+    for topic_data in topics_data:
+        topic = CreatableTopic(
+            name=topic_data["topic_name"],
+            num_partitions=topic_data["partitions"],
+            replication_factor=topic_data.get("replication", 1),
+            assignments=[],
+            configs=[]
+        )
+        topics.append(topic)
+    
+    return CreateTopicsRequest(
+        header=header,
+        topics=topics,
+        timeout_ms=30000,
+        validate_only=False
+    )
+
+
+def create_describe_topics_request(topic_requests: list[dict]) -> DescribeTopicPartitionsRequest:
+    """Create a DESCRIBE_TOPIC_PARTITIONS request for UI."""
+    header = RequestHeader(
+        request_api_key=ApiKey.DESCRIBE_TOPIC_PARTITIONS,
+        request_api_version=0,
+        correlation_id=3,
+        client_id=None
+    )
+    
+    topics = []
+    for req in topic_requests:
+        topic = RequestTopic(name=req["topic_name"])
+        topics.append(topic)
+    
+    return DescribeTopicPartitionsRequest(
+        header=header,
+        topics=topics,
+        response_partition_limit=100,
+        cursor=None
+    )
+
+
+def create_metadata_request(topic_names: list[str] | None = None) -> MetadataRequest:
+    """Create a METADATA request for UI."""
+    header = RequestHeader(
+        request_api_key=ApiKey.METADATA,
+        request_api_version=12,
+        correlation_id=1001,
+        client_id=None
+    )
+    
+    topics = None
+    if topic_names:
+        topics = []
+        for topic_name in topic_names:
+            topic = MetadataRequestTopic(
+                topic_id=UUID(int=0),  # null UUID
+                name=topic_name
+            )
+            topics.append(topic)
+    
+    return MetadataRequest(
+        header=header,
+        topics=topics,
+        allow_auto_topic_creation=False,
+        include_cluster_authorized_operations=False,
+        include_topic_authorized_operations=False
+    )
+
+def create_fetch_request(consume_requests: list[dict]) -> FetchRequest:
+    """Create a FETCH request for UI."""
+    header = RequestHeader(
+        request_api_key=ApiKey.FETCH,
+        request_api_version=13,
+        correlation_id=4,
+        client_id=None
+    )
+    
+    topics = []
+    for req in consume_requests:
+        topic_id = convert_topic_name_to_uuid(req["topic_name"])
+        
+        partition = FetchPartition(
+            partition=req["partition"],
+            current_leader_epoch=-1,
+            fetch_offset=req["start_offset"],
+            last_fetched_epoch=-1,
+            log_start_offset=-1,
+            partition_max_bytes=1048576
+        )
+        
+        topic = FetchTopic(
+            topic_id=topic_id,
+            partitions=[partition]
+        )
+        topics.append(topic)
+    
+    return FetchRequest(
+        header=header,
+        max_wait_ms=5000,
+        min_bytes=1,
+        max_bytes=1048576,
+        isolation_level=0,
+        session_id=0,
+        session_epoch=-1,
+        topics=topics,
+        forgotten_topics_data=[],
+        rack_id=""
+    )
+
+def create_fetch_request_with_topic_Id(topic_id: UUID, partition: int) -> FetchRequest:
+    """Create a FETCH request for a specific topic and partition."""
+    header = RequestHeader(
+        request_api_key=ApiKey.FETCH,
+        request_api_version=13,
+        correlation_id=4,
+        client_id=None
+    )
+
+    partition_data = FetchPartition(
+        partition=partition,
+        current_leader_epoch=-1,
+        fetch_offset=0,
+        last_fetched_epoch=-1,
+        log_start_offset=-1,
+        partition_max_bytes=1048576
+    )
+
+    topic = FetchTopic(
+        topic_id=topic_id,
+        partitions=[partition_data]
+    )
+
+    return FetchRequest(
+        header=header,
+        max_wait_ms=5000,
+        min_bytes=1,
+        max_bytes=1048576,
+        isolation_level=0,
+        session_id=0,
+        session_epoch=-1,
+        topics=[topic],
+        forgotten_topics_data=[],
+        rack_id=""
+    )
+
+def create_produce_request(produce_requests: list[dict]) -> ProduceRequest:
+    """Create a PRODUCE request for UI."""
+    header = RequestHeader(
+        request_api_key=ApiKey.PRODUCE,
+        request_api_version=8,
+        correlation_id=5,
+        client_id=None
+    )
+    
+    topics = []
+    for req in produce_requests:
+        # Create records from the request data
+        record_objects = []
+        for index, record in enumerate(req["records"]):
+            record_obj = DefaultRecord(
+                attributes=0,
+                timestamp_delta=0,
+                offset_delta=index,
+                key=record["key"].encode() if record["key"] else b"",
+                value=record["value"].encode() if record["value"] else b"",
+                headers=[]
+            )
+            record_objects.append(record_obj)
+        
+        # Create record batch
+        record_batch = DefaultRecordBatch(
+            base_offset=0,
+            partition_leader_epoch=0,
+            magic=2,
+            crc=0,
+            attributes=0,
+            last_offset_delta=len(record_objects) - 1,
+            base_timestamp=0,
+            max_timestamp=0,
+            producer_id=-1,
+            producer_epoch=-1,
+            base_sequence=-1,
+            records=record_objects # type: ignore
+        )
+        
+        partition_data = PartitionProduceData(
+            index=req["partition"],
+            records=record_batch.encode()
+        )
+        
+        topic_data = TopicProduceData(
+            name=req["topic_name"],
+            partition_data=[partition_data]
+        )
+        topics.append(topic_data)
+    
+    return ProduceRequest(
+        header=header,
+        transactional_id=None,
+        acks=-1,
+        timeout_ms=5000,
+        topic_data=topics
+    )
 
 
 

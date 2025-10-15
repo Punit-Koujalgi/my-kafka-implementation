@@ -2,6 +2,8 @@
 
 from uuid import UUID
 from io import BytesIO
+from dataclasses import dataclass, asdict
+import json
 
 import os
 import sys
@@ -9,10 +11,11 @@ import socket
 import struct
 
 from kafka_server.protocol.protocol import *
+from .request_builder import create_fetch_request_with_topic_Id, convert_topic_name_to_uuid, convert_uuid_to_topic_name
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def read_response(sock: socket.socket) -> bytes:
+def read_response_v1(sock: socket.socket) -> bytes:
     """Read a response from the socket."""
     # Read message length
     length_bytes = sock.recv(4)
@@ -32,7 +35,7 @@ def read_response(sock: socket.socket) -> bytes:
     return message
 
 
-def parse_api_versions_response(data: bytes) -> None:
+def parse_api_versions_response_v1(data: bytes) -> None:
     """Parse and print API_VERSIONS response."""
     readable = BytesIO(data)
     
@@ -56,7 +59,7 @@ def parse_api_versions_response(data: bytes) -> None:
         print(f"  API {api_key}: versions {min_version}-{max_version}")
 
 
-def parse_create_topics_response(data: bytes) -> None:
+def parse_create_topics_response_v1(data: bytes) -> None:
     """Parse and print CREATE_TOPICS response."""
     readable = BytesIO(data)
     
@@ -104,7 +107,7 @@ def parse_create_topics_response(data: bytes) -> None:
 
 
 
-def parse_metadata_response(data: bytes):
+def parse_metadata_response_v1(data: bytes):
     """Parse and print METADATA response."""
     readable = BytesIO(data)
     
@@ -187,7 +190,7 @@ def parse_metadata_response(data: bytes):
     print(f"Cluster Authorized Operations: {cluster_auth_ops}")
 
 
-def parse_fetch_response(data: bytes) -> None:
+def parse_fetch_response_v1(data: bytes) -> None:
     """Parse and print FETCH response."""
     readable = BytesIO(data)
 
@@ -242,7 +245,7 @@ def parse_fetch_response(data: bytes) -> None:
 
     decode_tagged_fields(readable)
 
-def parse_produce_response(data: bytes) -> None:
+def parse_produce_response_v1(data: bytes) -> None:
     """Parse and print PRODUCE response."""
     readable = BytesIO(data)
 
@@ -281,5 +284,160 @@ def parse_produce_response(data: bytes) -> None:
             decode_tagged_fields(readable)
 
     decode_tagged_fields(readable)
+
+
+# V2 Functions - Direct server integration for UI
+import time
+import uuid
+from kafka_server.protocol.response import handle_request
+from kafka_server.protocol.request import Request
+from kafka_server.apis.api_versions import ApiVersionsRequest
+from kafka_server.apis.api_create_topics import CreateTopicsRequest, CreateTopicsResponse
+from kafka_server.apis.api_describe_topic_partitions import DescribeTopicPartitionsRequest, DescribePartitionsResponse
+from kafka_server.apis.api_metadata import MetadataRequest, MetadataResponse
+from kafka_server.apis.api_fetch import FetchRequest, FetchResponse
+from kafka_server.apis.api_produce import ProduceRequest, ProduceResponse
+
+
+def read_response(request: Request) -> dict:
+    """Process request directly using server and return structured response for UI."""
+    response = handle_request(request)
+    return {
+        "request": str(request),
+        "response": str(response),
+        "timestamp": time.time()
+    }
+
+
+def parse_api_versions_response(request: ApiVersionsRequest, add_api_log: Callable) -> tuple:
+    """Handle API_VERSIONS request and return UI-friendly response."""
+    response = handle_request(request)
+    dropDown = add_api_log("ApiVersionsResponse", response)
+    return response, dropDown
+
+
+def parse_create_topics_response(request: CreateTopicsRequest, add_api_log: Callable) -> tuple:
+    """Handle CREATE_TOPICS request and return UI-friendly response."""
+    response: CreateTopicsResponse = handle_request(request) # type: ignore
+    dropDown = add_api_log("CreateTopicsResponse", response)
+
+    results = []
+    for topic in response.topics:
+        results.append({
+            "status": "✅",
+            "topic_name": topic.name,
+            "topic_id": str(topic.topic_id),
+            "partitions": topic.num_partitions,
+            "replication_factor": topic.replication_factor
+        })
+
+    return results, dropDown
+
+
+def parse_describe_topics_response(request: DescribeTopicPartitionsRequest, add_api_log: Callable, topic_requests) -> tuple:
+    """Handle DESCRIBE_TOPIC_PARTITIONS request and return UI-friendly response."""
+    response: DescribePartitionsResponse = handle_request(request) # type: ignore
+    dropDown = add_api_log("DescribeTopicPartitionsResponse", response)
+
+    results = []
+    for topic in response.topics:
+        for partition in topic.partitions:
+
+            current_topic_request = [topic_request for topic_request in topic_requests if topic_request["topic_name"] == topic.name][0]
+            if partition.partition_index not in current_topic_request["partitions"]:
+                continue
+
+            results.append({
+                "status": "✅ Healthy",
+                "topic_name": topic.name,
+                "partition": partition.partition_index,
+                "error_code": 0,
+                "leader_id": partition.leader_id,
+                "replicas": partition.replica_nodes
+            })
+
+    return results, dropDown
+
+
+def parse_metadata_response(request: MetadataRequest, add_api_log: Callable) -> tuple:
+    """Handle METADATA request and return UI-friendly response."""
+    response: MetadataResponse = handle_request(request) # type: ignore
+    dropDown = add_api_log("MetadataResponse", response)
+
+    topics_data = []
+    total_partitions = 0
+    total_records = 0
+    
+    for topic in response.topics:
+        for partition in topic.partitions:
+            total_partitions += 1
+            partition_records = 0
+
+            # Send a fetch request to get record count for this partition
+            fetch_request = create_fetch_request_with_topic_Id(topic.topic_id, partition.partition_index)
+            fetch_response: FetchResponse = handle_request(fetch_request)  # type: ignore
+            if fetch_response.responses and fetch_response.responses[0].partitions:
+                for record_batch in fetch_response.responses[0].partitions[0].records:
+                    partition_records += len(record_batch.records)
+
+            topic_data = {
+                "topic_name": topic.name,
+                "topic_id": str(topic.topic_id),
+                "partitions": partition.partition_index,
+                "records": partition_records
+            }
+
+            topics_data.append(topic_data)
+            total_records += partition_records
+
+    return {
+        "topics": topics_data,
+        "total_topics": len(response.topics),
+        "total_partitions": total_partitions,
+        "total_records": total_records
+    }, dropDown
+
+def parse_fetch_response(request: FetchRequest, add_api_log: Callable) -> tuple:
+    """Handle FETCH request and return UI-friendly response."""
+    response: FetchResponse = handle_request(request) # type: ignore
+    dropDown = add_api_log("FetchResponse", response)
+
+    results = []
+    for fetch_response in response.responses:
+        topic_name = convert_uuid_to_topic_name(fetch_response.topic_id)
+        for partition_data in fetch_response.partitions:
+            for record_batch in partition_data.records:
+                # print("----- Batch ----- ")
+                for record in record_batch.records:
+                    # print(f"Record: Key={record.key.decode()}, Value={record.value.decode()}")
+                    results.append({
+                        "Topic": topic_name,
+                        "Partition": partition_data.partition_index,
+                        "Batch offset": record_batch.base_offset,
+                        "Key": record.key.decode(), "Value": record.value.decode() # type: ignore
+                    })
+    
+    return results, dropDown
+
+
+def parse_produce_response(request: ProduceRequest, add_api_log: Callable, produce_request_ui) -> tuple:
+    """Handle PRODUCE request and return UI-friendly response."""
+    response: ProduceResponse = handle_request(request) # type: ignore
+    dropDown = add_api_log("ProduceResponse", response)
+
+    results = []
+    for topic_response in response.responses:
+        for partition_data in topic_response.partition_responses:
+            
+            current_request = [topic for topic in produce_request_ui if topic["topic_name"] == topic_response.name][0]
+
+            results.append({
+                "topic": topic_response.name,
+                "partition": partition_data.index,
+                "records_added": len(current_request["records"]) if current_request else 0,
+                "base_offset": partition_data.base_offset,
+            })
+    
+    return results, dropDown
 
 

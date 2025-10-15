@@ -4,12 +4,12 @@ from uuid import UUID, uuid4
 from io import BytesIO
 import os
 
-from app.metadata.cluster_metadata import ClusterMetadata
-from app.metadata.record import TopicRecord, PartitionRecord, DefaultRecord, RecordHeader
-from app.metadata.record_batch import MetadataRecordBatch
-from app.protocol.protocol import *
-from app.protocol.request import Request, RequestHeader
-from app.protocol.response import Response, ResponseHeader
+from kafka_server.metadata.cluster_metadata import ClusterMetadata
+from kafka_server.metadata.record import TopicRecord, PartitionRecord, DefaultRecord, RecordHeader
+from kafka_server.metadata.record_batch import MetadataRecordBatch
+from kafka_server.protocol.protocol import *
+from kafka_server.protocol.request import Request, RequestHeader
+from kafka_server.protocol.response import Response, ResponseHeader
 
 
 @dataclass(frozen=True)

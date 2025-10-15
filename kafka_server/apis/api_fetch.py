@@ -189,7 +189,7 @@ def _handle_fetch_topic(fetch_topic: FetchTopic) -> FetchableTopicResponse:
 			PartitionData(
 				partition_index=p.partition,
 				error_code=ErrorCode.NONE,
-				records=list(read_record_batches(topic_name, p.partition)),
+				records=list(read_record_batches(topic_name, p.partition, p.fetch_offset)),
 			)
 			for p in fetch_topic.partitions
 		],

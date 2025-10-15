@@ -16,57 +16,57 @@ def main():
 
         # Test 1: API_VERSIONS request
         print("\n=== Testing API_VERSIONS ===")
-        api_versions_request = create_api_versions_request()
+        api_versions_request = create_api_versions_request_v1()
         response = ServerConnector().send(api_versions_request)
-        parse_api_versions_response(response)
+        parse_api_versions_response_v1(response)
         
         # Test 2: CREATE_TOPICS request
         print("\n=== Testing CREATE_TOPICS ===")
         topic_name = "test-topic-" + str(os.getpid())
         # topic_name = "test-topic-1" 
-        create_topics_request = create_create_topics_request(topic_name, 3)
+        create_topics_request = create_create_topics_request_v1(topic_name, 3)
         response = ServerConnector().send(create_topics_request)
-        parse_create_topics_response(response)
+        parse_create_topics_response_v1(response)
         
         # Test 3: DESCRIBE_TOPIC_PARTITIONS request
         print("\n=== Testing DESCRIBE_TOPIC_PARTITIONS ===")
-        describe_request = create_describe_topics_request(topic_name)
+        describe_request = create_describe_topics_request_v1(topic_name)
         response = ServerConnector().send(describe_request)
         print(f"DESCRIBE_TOPIC_PARTITIONS Response length: {len(response)} bytes")
         
         # Test 4: METADATA request
         print("\n=== Testing METADATA one topic ===")
-        metadata_request = create_metadata_request(["test-topic-543772"])
+        metadata_request = create_metadata_request_v1(["test-topic-543772"])
         response = ServerConnector().send(metadata_request)
         print(f"METADATA Response length: {len(response)} bytes")
-        parse_metadata_response(response)
+        parse_metadata_response_v1(response)
 
         # Test 5: METADATA request
         print("\n=== Testing METADATA all topics ===")
-        metadata_request = create_metadata_request()
+        metadata_request = create_metadata_request_v1()
         response = ServerConnector().send(metadata_request)
         print(f"METADATA Response length: {len(response)} bytes")
-        parse_metadata_response(response)
-        
+        parse_metadata_response_v1(response)
+
         # Test 6: FETCH request
         print("\n=== Testing FETCH ===")
         topic_id = UUID("c7a3acab-c971-475f-86f4-be220ad3250d")  # Replace with actual topic ID
-        fetch_request = create_fetch_request(topic_id, 0, 0)
+        fetch_request = create_fetch_request_v1(topic_id, 0, 0)
         response = ServerConnector().send(fetch_request)
-        parse_fetch_response(response)
+        parse_fetch_response_v1(response)
 
         # Test 7: PRODUCE request
         print("\n=== Testing PRODUCE ===")
         records = [("key1", "test-record-data")]  # Replace with actual record data
-        produce_request = create_produce_request(topic_name, 0, records)
+        produce_request = create_produce_request_v1(topic_name, 0, records)
         response = ServerConnector().send(produce_request)
-        parse_produce_response(response)
+        parse_produce_response_v1(response)
 
         # Test 8: FETCH request
         print("\n=== Testing FETCH ===")
-        fetch_request = create_fetch_request(topic_name, 0, 0)
+        fetch_request = create_fetch_request_v1(topic_name, 0, 0)
         response = ServerConnector().send(fetch_request)
-        parse_fetch_response(response)
+        parse_fetch_response_v1(response)
 
 
         print("\nTest completed successfully!")

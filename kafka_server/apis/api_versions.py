@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from typing import Self
 
-from app.protocol.protocol import *
-from app.protocol.request import RequestHeader, Request
-from app.protocol.response import ResponseHeader, Response
+from kafka_server.protocol.protocol import *
+from kafka_server.protocol.request import RequestHeader, Request
+from kafka_server.protocol.response import ResponseHeader, Response
 
 
 @dataclass(frozen=True)
