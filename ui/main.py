@@ -1,15 +1,23 @@
 import gradio as gr
+from httpcore import request
 import pandas as pd
 from typing import List, Dict, Any
 from dataclasses import dataclass, asdict, is_dataclass
 from pprint import pformat
-import json
 import time
+import threading
 
 from kafka_client.client_utilities import *
 from kafka_client.request_builder import *
 from kafka_client.response_parser import *
+from kafka_client.api import get_all_topic_names
 from .constants import *
+
+# Global variables for real-time streaming
+streaming_active = False
+streaming_thread = None
+streaming_lock = threading.Lock()
+streaming_offsets = {}  # Track offsets per topic-partition
 
 
 def connect_to_kafka():
@@ -113,7 +121,7 @@ def consume_messages_api(consume_requests):
         return results, dropDown
     except Exception as e:
         add_api_log("CONSUME ERROR", f"Error: {str(e)}")
-        raise e
+
         # Return empty results
         return [], api_logs_dropdown
 
@@ -126,6 +134,94 @@ produce_records = []
 api_logs = []
 api_request_tracker = {}
 
+def refresh_topic_dropdowns():
+    """Refresh all topic dropdowns"""
+    try:
+        topics = get_all_topic_names()
+        return (
+            gr.update(choices=topics, value=topics[0] if topics else None),  # describe
+            gr.update(choices=topics, value=topics[0] if topics else None),  # produce  
+            gr.update(choices=topics, value=topics[0] if topics else None)   # consume
+        )
+    except Exception as e:
+        print(f"Error refreshing topic dropdowns: {e}")
+        return (
+            gr.update(choices=[], value=None),
+            gr.update(choices=[], value=None), 
+            gr.update(choices=[], value=None)
+        )
+
+def start_real_time_streaming():
+    """Start real-time message streaming"""
+    global streaming_active, streaming_thread
+
+    if not pending_consume_requests:
+        return "▶️ Start Real-time Streaming"
+
+    with streaming_lock:
+        if streaming_active:
+            return "⚠️ Streaming already active!"
+        
+        streaming_active = True
+        for pending in pending_consume_requests:
+            topic_name = pending["topic_name"]
+            partition = pending["partition"]
+            start_offset = pending["start_offset"]
+            streaming_offsets[(topic_name, partition)] = start_offset
+        
+        def streaming_worker():
+            global streaming_active
+            
+            while streaming_active:
+                try:
+                    
+                    for pending in pending_consume_requests:
+                        topic_name = pending["topic_name"]
+                        partition = pending["partition"]
+                        start_offset = streaming_offsets.get((topic_name, partition), pending["start_offset"])
+                        pending["start_offset"] = start_offset  # Update to current offset
+                    
+                    request = create_fetch_request(pending_consume_requests)
+                    add_api_log("FetchRequest", request)
+
+                    time.sleep(2)  # Poll every 2 seconds
+                    
+                except Exception as e:
+                    print(f"Streaming error: {e}")
+                    time.sleep(2)
+        
+        streaming_thread = threading.Thread(target=streaming_worker, daemon=True)
+        streaming_thread.start()
+        
+        return "🔴 Stop Streaming"
+
+def stop_real_time_streaming():
+    """Stop real-time message streaming"""
+    global streaming_active, streaming_thread
+    
+    with streaming_lock:
+        streaming_active = False
+        if streaming_thread:
+            streaming_thread.join(timeout=1)
+        streaming_thread = None
+        streaming_offsets.clear()
+        
+        return "▶️ Start Real-time Streaming"
+
+def toggle_real_time_streaming(current_state):
+    """Toggle real-time streaming on/off"""
+    if current_state == "▶️ Start Real-time Streaming":
+
+        gr.Info("""
+            🌊 Real-time Streaming Active!\n
+            
+            💡Tip: Open this app in another browser tab to produce messages while viewing live updates here!
+        """
+        )
+
+        return "🔴 Stop Streaming", gr.update(interactive=False), gr.update(active=True)
+    else:
+        return "▶️ Start Real-time Streaming", gr.update(interactive=True), gr.update(active=False)
 
 def update_connection_status():
     """Update connection status with loading animation"""
@@ -263,7 +359,7 @@ def add_consume_request(topic_name, partition, start_offset, max_messages):
         df = pd.DataFrame(pending_consume_requests)
         return df, "" 
 
-def consume_messages():
+def consume_messages(streaming_toggle_btn):
     """Consume messages from all pending requests"""
     global pending_consume_requests
     if not pending_consume_requests:
@@ -271,7 +367,9 @@ def consume_messages():
             pd.DataFrame(columns=["topic_name", "partition", "start_offset", "max_messages"]), api_logs_dropdown
     
     results, dropDown = consume_messages_api(pending_consume_requests)
-    pending_consume_requests = []
+    print(streaming_toggle_btn)
+    if streaming_toggle_btn == "▶️ Start Real-time Streaming":
+        pending_consume_requests = []
 
     return pd.DataFrame(results), pd.DataFrame(columns=["topic_name", "partition", "start_offset", "max_messages"]), dropDown
 
@@ -357,7 +455,12 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                 # Describe Topic Tab
                 with gr.TabItem("🔍 Describe Topics"):
                     with gr.Row():
-                        describe_topic_input = gr.Textbox(label="📝 Topic Name", placeholder="Enter topic name")
+                        describe_topic_input = gr.Dropdown(
+                            label="📝 Topic Name", 
+                            choices=[], 
+                            value=None
+                        )
+                        
                         partitions_multiselect = gr.CheckboxGroup(
                             choices=[0, 1, 2, 3, 4], 
                             label="🗂️ Select Partitions",
@@ -407,7 +510,12 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                     
                     gr.Markdown("### 🎯 Topic Configuration")
                     with gr.Row():
-                        produce_topic_input = gr.Textbox(label="📝 Topic Name", placeholder="Enter topic name")
+                        produce_topic_input = gr.Dropdown(
+                            label="📝 Topic Name", 
+                            choices=[], 
+                            value=None
+                        )
+
                         produce_partition_input = gr.Number(label="🗂️ Partition", value=0, minimum=0)
                     
                     add_produce_request_btn = gr.Button("➕ Add to Produce Queue", variant="secondary")
@@ -448,7 +556,13 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                 # Consume Tab
                 with gr.TabItem("📥 Consume"):
                     with gr.Row():
-                        consume_topic_input = gr.Textbox(label="📝 Topic Name", placeholder="Enter topic name")
+                        consume_topic_input = gr.Dropdown(
+                            label="📝 Topic Name", 
+                            choices=[], 
+                            value=None,
+                            allow_custom_value=False,
+                        )
+
                         consume_partition_input = gr.Number(label="🗂️ Partition", value=0, minimum=0)
                     
                     with gr.Row():
@@ -466,7 +580,11 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                         wrap=True
                     )
                     
-                    consume_btn = gr.Button("📥 Consume Messages", variant="primary")
+                    # Real-time streaming and consume buttons
+                    with gr.Row():
+                        streaming_toggle_btn = gr.Button("▶️ Start Real-time Streaming", variant="primary")
+                        consume_btn = gr.Button("📥 Consume Messages", variant="primary")
+                    
                     consume_results_table = gr.Dataframe(
                         headers=["Topic", "Partition", "Batch Offset", "Key", "Value"],
                         column_widths=["20%", "10%", "10%", "30%", "30%"],
@@ -492,7 +610,6 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                 value=api_logs[0] if api_logs else "No requests yet!",
                 label="Recent API Calls",
                 interactive=True,
-                allow_custom_value=True
             )
             
             log_details = gr.Textbox("Select a log entry to view details", lines=20, label="Log Details", max_lines=20, autoscroll=False)
@@ -510,7 +627,7 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                 api_request_tracker[f"[{timestamp}] {action}"] = f"```\n{pformat(details, indent=2, width=80)}\n```"
 
                 print(action)
-                return gr.update(choices=api_logs[0:10], value=api_logs[0] if len(api_logs) > 0 else "No requests yet!")  # Update dropdown with latest log
+                return gr.update(choices=api_logs[0:10], value=api_logs[0] if len(api_logs) > 0 else "")  # Update dropdown with latest log
 
             # Update logs dropdown when API calls are made
             api_logs_dropdown.change(
@@ -525,11 +642,17 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
     ).then(
         load_overview,
         outputs=[total_topics, total_partitions, total_records, overview_table, api_logs_dropdown]
+    ).then(
+        refresh_topic_dropdowns,
+        outputs=[describe_topic_input, produce_topic_input, consume_topic_input]
     )
 
     create_topics_btn.click(
         create_all_topics,
         outputs=[creation_results_table, pending_topics_table, api_logs_dropdown]
+    ).then(
+        refresh_topic_dropdowns,
+        outputs=[describe_topic_input, produce_topic_input, consume_topic_input]
     )
 
     describe_btn.click(
@@ -544,8 +667,24 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
 
     consume_btn.click(
         consume_messages,
+        inputs=[streaming_toggle_btn],
         outputs=[consume_results_table, consume_requests_table, api_logs_dropdown]
     )
+    
+    timer = gr.Timer(2, active=False)
+    timer.tick(
+        consume_messages,
+        inputs=[streaming_toggle_btn],
+        outputs=[consume_results_table, consume_requests_table, api_logs_dropdown]
+    )
+
+        # Streaming toggle handler
+    streaming_toggle_btn.click(
+        toggle_real_time_streaming,
+        inputs=[streaming_toggle_btn],
+        outputs=[streaming_toggle_btn, consume_btn, timer]
+    )
+
 
 if __name__ == "__main__":
     demo.launch()

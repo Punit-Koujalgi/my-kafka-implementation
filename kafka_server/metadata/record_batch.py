@@ -100,4 +100,5 @@ def read_record_batches(topic_name: str, partition_index: int, fetch_offset: int
                 else:
                     fetch_offset -= 1
                     record_batch_class.decode(reader)
+            
 

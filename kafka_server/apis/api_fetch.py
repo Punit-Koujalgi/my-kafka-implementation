@@ -183,13 +183,15 @@ def _handle_fetch_topic(fetch_topic: FetchTopic) -> FetchableTopicResponse:
 			],
 		)
 
+
 	return FetchableTopicResponse(
 		topic_id=fetch_topic.topic_id,
 		partitions=[
 			PartitionData(
 				partition_index=p.partition,
 				error_code=ErrorCode.NONE,
-				records=list(read_record_batches(topic_name, p.partition, p.fetch_offset)),
+				records=(temp_records := list(read_record_batches(topic_name, p.partition, p.fetch_offset))),
+				last_stable_offset=(temp_records[-1].base_offset if temp_records else 0)
 			)
 			for p in fetch_topic.partitions
 		],
