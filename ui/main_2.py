@@ -1,14 +1,3 @@
-# Kafka Gradio UI — Initial Layout
-# ---------------------------------------------------------------
-# This is an incremental starting point for a Kafka control panel
-# built with Gradio (Blocks). All API calls are stubbed with
-# placeholder functions and dummy data so you can see the full
-# layout and interactions. Icons and bold text are sprinkled in
-# for a friendlier, more visual feel.
-#
-# How to run:
-#   pip install gradio pandas
-#   python app.py
 
 import time
 import random
@@ -369,7 +358,7 @@ def on_log_select(log, selection):
 # ---------------------------------------------------------------
 # Build UI
 # ---------------------------------------------------------------
-with gr.Blocks(title="Kafka Control Center", fill_width=True, theme=gr.themes.Default()) as demo:
+with gr.Blocks(title="Kafka Control Center", fill_width=True, theme=gr.themes.Default()) as demo: # type: ignore
     # Global state
     log_state = gr.State([])
     create_pending_state = gr.State([])  # list of dicts queued for creation

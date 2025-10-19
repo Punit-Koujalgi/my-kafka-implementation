@@ -6,6 +6,8 @@ from dataclasses import dataclass, asdict, is_dataclass
 from pprint import pformat
 import time
 import threading
+import os
+import glob
 
 from kafka_client.client_utilities import *
 from kafka_client.request_builder import *
@@ -231,6 +233,16 @@ def update_connection_status():
     else:
         return "🔴 **Failed to connect to Kafka Broker**", dropDown
 
+def get_kafka_files():
+    """Get list of Kafka data files"""
+    try:
+        files = glob.glob("/tmp/kraft-combined-logs/*")
+        if not files:
+            return []
+        return [(os.path.basename(f), f) for f in files]
+    except Exception as e:
+        print(f"Error getting Kafka files: {e}")
+        return []
 
 # Tab functions
 def load_overview():
@@ -293,7 +305,7 @@ def add_describe_request(topic_name, partitions):
             "topic_name": req["topic_name"],
             "partitions": ", ".join(map(str, req["partitions"]))
         } for req in pending_describe_requests])
-        return df, ""  # Clear topic name input
+        return df
 
 def describe_topics():
     """Describe all pending topic requests"""
@@ -333,7 +345,8 @@ def add_produce_request(topic_name, partition):
             "record_count": req["record_count"]
         } for req in pending_produce_requests])
         df_records = pd.DataFrame(columns=["key", "value"])
-        return df_requests, df_records, "" 
+        return df_requests, df_records
+    return pd.DataFrame(columns=["topic_name", "partition", "record_count"]), pd.DataFrame(columns=["key", "value"])
 
 def produce_messages():
     """Produce all pending messages"""
@@ -357,7 +370,7 @@ def add_consume_request(topic_name, partition, start_offset, max_messages):
             "max_messages": max_messages
         })
         df = pd.DataFrame(pending_consume_requests)
-        return df, "" 
+        return df 
 
 def consume_messages(streaming_toggle_btn):
     """Consume messages from all pending requests"""
@@ -397,15 +410,18 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
     # Main content area
     with gr.Row():
         with gr.Column(scale=6):
-            with gr.Tabs():
+            with gr.Tabs() as tabs:
                 # Overview Tab
-                with gr.TabItem("📊 Overview"):
+                with gr.TabItem("📊 Overview", elem_id="overview-tab"):
                     with gr.Row():
                         total_topics = gr.Markdown("📊 **Total Topics:** Loading...")
                         total_partitions = gr.Markdown("🗂️ **Total Partitions:** Loading...")
                         total_records = gr.Markdown("📝 **Total Records:** Loading...")
                     
-                    refresh_overview = gr.Button("🔄 Refresh Overview", variant="primary", elem_id="refresh-button")
+                    with gr.Row():
+                        refresh_overview = gr.Button("🔄 Refresh Overview", variant="primary", elem_id="refresh-button")
+                        download_data_btn = gr.Button("📥 Download Kafka Data", variant="secondary")
+                    
                     overview_table = gr.Dataframe(
                         headers=["Topic Name", "Topic ID", "Partition", "Records"],
                         label="📋 Topics Overview",
@@ -458,7 +474,8 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                         describe_topic_input = gr.Dropdown(
                             label="📝 Topic Name", 
                             choices=[], 
-                            value=None
+                            value=None,
+                            allow_custom_value=True
                         )
                         
                         partitions_multiselect = gr.CheckboxGroup(
@@ -487,7 +504,7 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                     add_describe_btn.click(
                         add_describe_request,
                         inputs=[describe_topic_input, partitions_multiselect],
-                        outputs=[pending_describe_table, describe_topic_input]
+                        outputs=[pending_describe_table]
                     )
                 
                 # Produce Tab
@@ -513,7 +530,8 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                         produce_topic_input = gr.Dropdown(
                             label="📝 Topic Name", 
                             choices=[], 
-                            value=None
+                            value=None,
+                            allow_custom_value=True
                         )
 
                         produce_partition_input = gr.Number(label="🗂️ Partition", value=0, minimum=0)
@@ -549,7 +567,7 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                     add_produce_request_btn.click(
                         add_produce_request,
                         inputs=[produce_topic_input, produce_partition_input],
-                        outputs=[produce_requests_table, records_table, produce_topic_input]
+                        outputs=[produce_requests_table, records_table]
                     )
                     
                 
@@ -560,7 +578,7 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                             label="📝 Topic Name", 
                             choices=[], 
                             value=None,
-                            allow_custom_value=False,
+                            allow_custom_value=True
                         )
 
                         consume_partition_input = gr.Number(label="🗂️ Partition", value=0, minimum=0)
@@ -595,21 +613,38 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                         show_search="filter",
                         wrap=True
                     )
-                    
+
                     add_consume_request_btn.click(
                         add_consume_request,
                         inputs=[consume_topic_input, consume_partition_input, start_offset_input, max_messages_slider],
-                        outputs=[consume_requests_table, consume_topic_input]
+                        outputs=[consume_requests_table]
+                    )
+                
+                # Downloads Tab
+                with gr.TabItem("📁 Downloads", elem_id="downloads-tab") as download_tab:
+                    gr.Markdown("### 📥 Download Kafka Data")
+                    download_dropdown = gr.Dropdown(
+                        label="From the dropdown, select <TopicName>-<PartitionNumber> pair to download...",
+                        choices=get_kafka_files(),
+                        value=None
+                    )
+                    download_file = gr.File(label="Selected file", interactive=False, type="binary")
+                    gr.Textbox(
+                        value="Downloaded log file will be in binary and user would need to decode via Kafka protocol to make sense of it. Happy exploring Kafka!",
+                        label="ℹ️ Info",
+                        interactive=False,
+                        lines=3
                     )
         
         # Second column (scale 3)
         with gr.Column(scale=3):
-            gr.Markdown("### 📡 **API Activity Logs**")
+            gr.Markdown("### 📡 **API Activity Logs ([Kafka Wire Protocol](https://kafka.apache.org/protocol.html))**")
             api_logs_dropdown = gr.Dropdown(
                 choices=api_logs,
                 value=api_logs[0] if api_logs else "No requests yet!",
                 label="Recent API Calls",
                 interactive=True,
+                allow_custom_value=True
             )
             
             log_details = gr.Textbox("Select a log entry to view details", lines=20, label="Log Details", max_lines=20, autoscroll=False)
@@ -645,6 +680,16 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
     ).then(
         refresh_topic_dropdowns,
         outputs=[describe_topic_input, produce_topic_input, consume_topic_input]
+    )
+
+    download_dropdown.change(
+        lambda x: x + "/00000000000000000000.log",
+        inputs=[download_dropdown],
+        outputs=[download_file]
+    )
+
+    download_data_btn.click(
+        lambda: gr.Info("To download Kafka data files, go to Downloads Tab (maybe in overflow menu) select a file from the dropdown and click the 'Download' button below it."),
     )
 
     create_topics_btn.click(

@@ -85,7 +85,7 @@ def read_record_batches(topic_name: str, partition_index: int, fetch_offset: int
         record_batch_class = DefaultRecordBatch
 
     log_file_path = f"/tmp/kraft-combined-logs/{topic_name}-{partition_index}/00000000000000000000.log"
-    print(f"Fetch offset: {fetch_offset} from {log_file_path}")
+    # print(f"Fetch offset: {fetch_offset} from {log_file_path}")
 
     if not os.path.exists(log_file_path):
         os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
