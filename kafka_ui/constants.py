@@ -66,6 +66,14 @@ function createReadmeModal() {
       <h1>🚀 Kafka Broker Console!</h1>
     </header>
 
+	<section>
+	  <h3> About Kafka: </h3>
+	  <div class="card">
+		<p>This repository is my implemenatation of Kafka, an open-source, distributed event streaming platform. It combines messaging, storage, and stream processing to handle large volumes of real-time data.
+
+- How it works: Producers send data to "topics" and consumers read data from these topics. Topics contain many partitions to isolate different kind of events in a Topic and for data replication.
+- Common uses: Building real-time data pipelines, data integration, real-time analytics, and event-driven architectures.</p>
+	</section>
     <section>
       <h3>📋 What is this app?</h3>
       <div class="card">

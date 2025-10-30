@@ -24,8 +24,7 @@ streaming_offsets = {}  # Track offsets per topic-partition
 
 def connect_to_kafka():
     """Connecting to Kafka broker"""
-    # time.sleep(4) # Wait for kafka to be ready
-    # Create a basic API versions request to test connection
+    time.sleep(4) # Wait for kafka to be ready
     try:
         request = create_api_versions_request()
         add_api_log("ApiVersionsRequest", request)
@@ -36,7 +35,7 @@ def connect_to_kafka():
         add_api_log("CONNECT", f"Failed to connect: {str(e)}")
         return False, api_logs_dropdown
 
-def get_topics_overview():
+def get_topics_overview_api():
     """Get overview of all topics"""
     try:
         request = create_metadata_request()
@@ -212,18 +211,22 @@ def stop_real_time_streaming():
 
 def toggle_real_time_streaming(current_state):
     """Toggle real-time streaming on/off"""
+
     if current_state == "▶️ Start Real-time Streaming":
 
-        gr.Info("""
-            🌊 Real-time Streaming Active!\n
-            
-            💡Tip: Open this app in another browser tab to produce messages while viewing live updates here!
-        """
-        )
-
-        return "🔴 Stop Streaming", gr.update(interactive=False), gr.update(active=True)
-    else:
-        return "▶️ Start Real-time Streaming", gr.update(interactive=True), gr.update(active=False)
+        global pending_consume_requests
+        if not pending_consume_requests:
+            gr.Warning("⚠️ No consume requests added for streaming!")
+        else:
+            gr.Info("""
+                🌊 Real-time Streaming Active!\n
+                
+                💡Tip: Open this app in another browser tab to produce messages while viewing live updates here!
+            """
+            )
+            return "🔴 Stop Streaming", gr.update(interactive=False), gr.update(active=True)
+        
+    return "▶️ Start Real-time Streaming", gr.update(interactive=True), gr.update(active=False)
 
 def update_connection_status():
     """Update connection status with loading animation"""
@@ -247,10 +250,10 @@ def get_kafka_files():
 # Tab functions
 def load_overview():
     """Load overview data"""
-    # time.sleep(3)  # Wait for kafka to be ready
-    data, dropDown = get_topics_overview()
+    time.sleep(3)  # Wait for kafka to be ready
+    data, dropDown = get_topics_overview_api()
     
-    # Create DataFrame for topics table
+    # DataFrame for topics table
     topics_df = pd.DataFrame(data["topics"])
     
     return (
@@ -288,7 +291,6 @@ def create_all_topics():
         return pd.DataFrame(columns=["status", "topic_name", "topic_id", "partitions", "error"])
     
     results, dropDown = create_topics_api(pending_topics)
-    add_api_log("CREATE_TOPICS", f"Created {len(results)} topics")
     pending_topics = []  # Clear pending topics
     
     return pd.DataFrame(results), pd.DataFrame(columns=["topic_name", "partitions", "replication"]), dropDown
@@ -380,7 +382,7 @@ def consume_messages(streaming_toggle_btn):
             pd.DataFrame(columns=["topic_name", "partition", "start_offset", "max_messages"]), api_logs_dropdown
     
     results, dropDown = consume_messages_api(pending_consume_requests)
-    print(streaming_toggle_btn)
+    # print(streaming_toggle_btn)
     if streaming_toggle_btn == "▶️ Start Real-time Streaming":
         pending_consume_requests = []
 
@@ -723,7 +725,7 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
         outputs=[consume_results_table, consume_requests_table, api_logs_dropdown]
     )
 
-        # Streaming toggle handler
+    # Streaming toggle handler
     streaming_toggle_btn.click(
         toggle_real_time_streaming,
         inputs=[streaming_toggle_btn],

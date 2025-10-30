@@ -11,69 +11,63 @@ import socket
 import struct
 
 from kafka_server.protocol.protocol import *
-from .request_builder import create_fetch_request_with_topic_Id, convert_topic_name_to_uuid, convert_uuid_to_topic_name
+from .request_builder import create_fetch_request_with_topic_Id
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def read_response_v1(sock: socket.socket) -> bytes:
-    """Read a response from the socket."""
-    # Read message length
-    length_bytes = sock.recv(4)
-    if len(length_bytes) != 4:
-        raise Exception("Failed to read message length")
-    
-    message_length = struct.unpack(">I", length_bytes)[0]
-    
-    # Read message
-    message = b""
-    while len(message) < message_length:
-        chunk = sock.recv(message_length - len(message))
-        if not chunk:
-            raise Exception("Connection closed")
-        message += chunk
-    
-    return message
 
-
-def parse_api_versions_response_v1(data: bytes) -> None:
-    """Parse and print API_VERSIONS response."""
+def parse_api_versions_response_v1(data: bytes) -> dict:
+    """Parse and return API_VERSIONS response."""
     readable = BytesIO(data)
     
     # Response header
     correlation_id = decode_int32(readable)
-    print(f"API_VERSIONS Response - Correlation ID: {correlation_id}")
+    # decode_tagged_fields(readable)  # header tagged fields
     
     # Response body
     error_code = decode_int16(readable)
-    print(f"Error Code: {error_code}")
     
     # API keys array
     api_keys_count = decode_unsigned_varint(readable) - 1
-    print(f"Supported APIs ({api_keys_count}):")
+    api_versions = []
     
     for _ in range(api_keys_count):
         api_key = decode_int16(readable)
         min_version = decode_int16(readable)
         max_version = decode_int16(readable)
         decode_tagged_fields(readable)
-        print(f"  API {api_key}: versions {min_version}-{max_version}")
+        api_versions.append({
+            "api_key": api_key,
+            "min_version": min_version,
+            "max_version": max_version
+        })
+    
+    # Throttle time and client software name/version (for v4)
+    throttle_time_ms = decode_int32(readable)
+    decode_tagged_fields(readable)  # finalized_features_epoch and friends
+    
+    return {
+        "correlation_id": correlation_id,
+        "error_code": error_code,
+        "api_versions": api_versions,
+        "throttle_time_ms": throttle_time_ms
+    }
 
 
-def parse_create_topics_response_v1(data: bytes) -> None:
-    """Parse and print CREATE_TOPICS response."""
+def parse_create_topics_response_v1(data: bytes) -> list[dict]:
+    """Parse and return CREATE_TOPICS response."""
     readable = BytesIO(data)
     
     # Response header
     correlation_id = decode_int32(readable)
-    print(f"CREATE_TOPICS Response - Correlation ID: {correlation_id}")
+    # decode_tagged_fields(readable)  # header tagged fields
     
     # Response body
     throttle_time_ms = decode_int32(readable)
-    print(f"Throttle Time: {throttle_time_ms}ms")
     
     # Topics array
     topics_count = decode_unsigned_varint(readable) - 1
-    print(f"Topics ({topics_count}):")
+    results = []
     
     for _ in range(topics_count):
         name = decode_compact_string(readable)
@@ -97,49 +91,56 @@ def parse_create_topics_response_v1(data: bytes) -> None:
         
         decode_tagged_fields(readable)
         
-        print(f"  Topic: {name}")
-        print(f"    ID: {topic_id}")
-        print(f"    Error Code: {error_code}")
-        if error_message:
-            print(f"    Error Message: {error_message}")
-        print(f"    Partitions: {num_partitions}")
-        print(f"    Replication Factor: {replication_factor}")
+        results.append({
+            "status": "✅" if error_code == 0 else "❌",
+            "topic_name": name,
+            "topic_id": str(topic_id),
+            "partitions": num_partitions,
+            "replication_factor": replication_factor,
+            "error_code": error_code,
+            "error_message": error_message
+        })
+    
+    return results
 
 
 
-def parse_metadata_response_v1(data: bytes):
-    """Parse and print METADATA response."""
+def parse_metadata_response_v1(data: bytes) -> dict:
+    """Parse and return METADATA response."""
     readable = BytesIO(data)
     
     # Response header
     correlation_id = decode_int32(readable)
-    print(f"METADATA Response - Correlation ID: {correlation_id}")
     decode_tagged_fields(readable)  # header tagged fields
     
     # Response body
     throttle_time_ms = decode_int32(readable)
-    print(f"Throttle Time: {throttle_time_ms}ms")
     
     # Brokers array
     brokers_count = decode_unsigned_varint(readable) - 1
-    print(f"Brokers ({brokers_count}):")
+    brokers = []
     for _ in range(brokers_count):
         node_id = decode_int32(readable)
         host = decode_compact_string(readable)
         port = decode_int32(readable)
         rack = decode_compact_nullable_string(readable)
         decode_tagged_fields(readable)
-        print(f"  Broker {node_id}: {host}:{port}" + (f" (rack: {rack})" if rack else ""))
+        brokers.append({
+            "node_id": node_id,
+            "host": host,
+            "port": port,
+            "rack": rack
+        })
     
     # Cluster info
     cluster_id = decode_compact_nullable_string(readable)
     controller_id = decode_int32(readable)
-    print(f"Cluster ID: {cluster_id}")
-    print(f"Controller ID: {controller_id}")
     
     # Topics array
     topics_count = decode_unsigned_varint(readable) - 1
-    print(f"Topics ({topics_count}):")
+    topics = []
+    total_partitions = 0
+    
     for _ in range(topics_count):
         error_code = decode_int16(readable)
         topic_name = decode_compact_nullable_string(readable)
@@ -149,9 +150,8 @@ def parse_metadata_response_v1(data: bytes):
         
         # Partitions array
         partitions_count = decode_unsigned_varint(readable) - 1
-        print(f"  Topic: {topic_name} (ID: {topic_id}, Internal: {is_internal})")
-        print(f"    Error Code: {error_code}")
-        print(f"    Partitions ({partitions_count}):")
+        partitions = []
+        total_partitions += partitions_count
         
         for _ in range(partitions_count):
             part_error_code = decode_int16(readable)
@@ -179,44 +179,64 @@ def parse_metadata_response_v1(data: bytes):
             
             decode_tagged_fields(readable)
             
-            print(f"      Partition {partition_index}: Leader={leader_id}, "
-                    f"Replicas={replica_nodes}, ISR={isr_nodes}, Error={part_error_code}")
+            partitions.append({
+                "partition_index": partition_index,
+                "leader_id": leader_id,
+                "replica_nodes": replica_nodes,
+                "isr_nodes": isr_nodes,
+                "error_code": part_error_code
+            })
         
         topic_auth_ops = decode_int32(readable)
         decode_tagged_fields(readable)
+        
+        topics.append({
+            "topic_name": topic_name,
+            "topic_id": topic_id,
+            "partitions": partitions,
+            "is_internal": is_internal,
+            "error_code": error_code
+        })
     
     cluster_auth_ops = decode_int32(readable)
     decode_tagged_fields(readable)
-    print(f"Cluster Authorized Operations: {cluster_auth_ops}")
+    
+    return {
+        "total_topics": topics_count,
+        "total_partitions": total_partitions,
+        "total_records": 0,  # This would need to be calculated separately
+        "topics": [{
+            "topic_name": topic["topic_name"],
+            "partitions": len(topic["partitions"]),
+            "topic_id": str(topic["topic_id"])
+        } for topic in topics],
+        "brokers": brokers,
+        "cluster_id": cluster_id,
+        "controller_id": controller_id
+    }
 
 
-def parse_fetch_response_v1(data: bytes) -> None:
-    """Parse and print FETCH response."""
+def parse_fetch_response_v1(data: bytes) -> list[dict]:
+    """Parse and return FETCH response."""
     readable = BytesIO(data)
 
     # Response header
     correlation_id = decode_int32(readable)
-    print(f"FETCH Response - Correlation ID: {correlation_id}")
     decode_tagged_fields(readable)  # header tagged fields
 
     # Response body
     throttle_time_ms = decode_int32(readable)
-    print(f"Throttle Time: {throttle_time_ms}ms")
-
     error_code = decode_int16(readable)
     session_id = decode_int32(readable)
-    print(f"Error Code: {error_code}, Session ID: {session_id}")
 
     # Responses array
     responses_count = decode_unsigned_varint(readable) - 1
-    print(f"Responses ({responses_count}):")
+    results = []
 
     for _ in range(responses_count):
         topic_id = decode_uuid(readable)
-        print(f"  Topic ID: {topic_id}")
 
         partitions_count = decode_unsigned_varint(readable) - 1
-        print(f"    Partitions ({partitions_count}):")
 
         for _ in range(partitions_count):
             partition_index = decode_int32(readable)
@@ -225,45 +245,63 @@ def parse_fetch_response_v1(data: bytes) -> None:
             last_stable_offset = decode_int64(readable)
             log_start_offset = decode_int64(readable)
 
-            print(f"      Partition {partition_index}: Error Code={error_code}, High Watermark={high_watermark}, Last Stable Offset={last_stable_offset}, Log Start Offset={log_start_offset}")
-
             # Skip aborted transactions array
             decode_compact_array(readable, lambda r: None)
 
             preferred_read_replica = decode_int32(readable)
-            print(f"        Preferred Read Replica: {preferred_read_replica}")
 
             # Records
             records_length = decode_unsigned_varint(readable)
-            records = BytesIO(readable.read(records_length))
-            print(f"        Records Length: {records_length} bytes")
-            if records:
-                from kafka_server.metadata.record_batch import DefaultRecordBatch
-                print(f"        Records Data: {DefaultRecordBatch.decode(records)}")
+            records_data = readable.read(records_length) if records_length > 0 else b""
+            
+            # Parse records
+            messages = []
+            if records_data:
+                try:
+                    from kafka_server.metadata.record_batch import DefaultRecordBatch
+                    from kafka_server.metadata.record import DefaultRecord
+                    records = BytesIO(records_data)
+                    record_batch = DefaultRecordBatch.decode(records)
+                    for record in record_batch.records:
+                        if isinstance(record, DefaultRecord):
+                            messages.append({
+                                "key": record.key.decode() if record.key else "",
+                                "value": record.value.decode() if record.value else "",
+                                "offset": record_batch.base_offset + record.offset_delta
+                            })
+                except Exception as e:
+                    # If parsing fails, just include raw data
+                    pass
 
             decode_tagged_fields(readable)
+            
+            results.append({
+                "topic_id": str(topic_id),
+                "partition": partition_index,
+                "messages": messages,
+                "high_watermark": high_watermark,
+                "error_code": error_code
+            })
 
     decode_tagged_fields(readable)
+    return results
 
-def parse_produce_response_v1(data: bytes) -> None:
-    """Parse and print PRODUCE response."""
+def parse_produce_response_v1(data: bytes) -> list[dict]:
+    """Parse and return PRODUCE response."""
     readable = BytesIO(data)
 
     # Response header
     correlation_id = decode_int32(readable)
-    print(f"PRODUCE Response - Correlation ID: {correlation_id}")
     decode_tagged_fields(readable)  # header tagged fields
 
     # Response body
     responses_count = decode_unsigned_varint(readable) - 1
-    print(f"Responses ({responses_count}):")
+    results = []
 
     for _ in range(responses_count):
         topic_name = decode_compact_string(readable)
-        print(f"  Topic: {topic_name}")
 
         partitions_count = decode_unsigned_varint(readable) - 1
-        print(f"    Partitions ({partitions_count}):")
 
         for _ in range(partitions_count):
             partition_index = decode_int32(readable)
@@ -272,18 +310,103 @@ def parse_produce_response_v1(data: bytes) -> None:
             log_append_time_ms = decode_int64(readable)
             log_start_offset = decode_int64(readable)
 
-            print(f"      Partition {partition_index}: Error Code={error_code}, Base Offset={base_offset}, Log Append Time={log_append_time_ms}, Log Start Offset={log_start_offset}")
-
             # Skip record errors array
             decode_compact_array(readable, lambda r: None)
 
             error_message = decode_compact_nullable_string(readable)
-            if error_message:
-                print(f"        Error Message: {error_message}")
 
             decode_tagged_fields(readable)
+            
+            results.append({
+                "topic": topic_name,
+                "partition": partition_index,
+                "records_added": 1 if error_code == 0 else 0,  # Simplified
+                "base_offset": base_offset,
+                "error_code": error_code,
+                "error_message": error_message
+            })
 
     decode_tagged_fields(readable)
+    return results
+
+
+def parse_describe_topics_response_v1(data: bytes) -> list[dict]:
+    """Parse and return DESCRIBE_TOPIC_PARTITIONS response."""
+    readable = BytesIO(data)
+
+    # Response header
+    correlation_id = decode_int32(readable)
+    decode_tagged_fields(readable)  # header tagged fields
+
+    # Response body
+    throttle_time_ms = decode_int32(readable)
+    
+    # Topics array
+    topics_count = decode_unsigned_varint(readable) - 1
+    results = []
+
+    for _ in range(topics_count):
+        error_code = decode_int16(readable)
+        topic_name = decode_compact_nullable_string(readable)
+        topic_id_bytes = readable.read(16)
+        topic_id = UUID(bytes=topic_id_bytes)
+        is_internal = decode_int8(readable) != 0
+        
+        # Partitions array
+        partitions_count = decode_unsigned_varint(readable) - 1
+        
+        for _ in range(partitions_count):
+            partition_error_code = decode_int16(readable)
+            partition_index = decode_int32(readable)
+            leader_id = decode_int32(readable)
+            leader_epoch = decode_int32(readable)
+            
+            # Replica nodes array
+            replica_count = decode_unsigned_varint(readable) - 1
+            replica_nodes = []
+            for _ in range(replica_count):
+                replica_nodes.append(decode_int32(readable))
+            
+            # ISR nodes array
+            isr_count = decode_unsigned_varint(readable) - 1
+            isr_nodes = []
+            for _ in range(isr_count):
+                isr_nodes.append(decode_int32(readable))
+            
+            # Eligible leader replicas array
+            eligible_count = decode_unsigned_varint(readable) - 1
+            for _ in range(eligible_count):
+                decode_int32(readable)
+            
+            # Last known ELR array
+            last_known_count = decode_unsigned_varint(readable) - 1
+            for _ in range(last_known_count):
+                decode_int32(readable)
+            
+            # Offline replicas array
+            offline_count = decode_unsigned_varint(readable) - 1
+            for _ in range(offline_count):
+                decode_int32(readable)
+            
+            decode_tagged_fields(readable)
+            
+            results.append({
+                "status": "✅" if partition_error_code == 0 else "❌",
+                "topic_name": topic_name,
+                "partition": partition_index,
+                "error_code": partition_error_code,
+                "leader_id": leader_id,
+                "replicas": len(replica_nodes)
+            })
+        
+        topic_auth_ops = decode_int32(readable)
+        decode_tagged_fields(readable)
+    
+    # Next cursor
+    decode_int8(readable)  # cursor (null byte)
+    decode_tagged_fields(readable)
+    
+    return results
 
 
 # V2 Functions - Direct server integration for UI
@@ -359,10 +482,12 @@ def parse_describe_topics_response(request: DescribeTopicPartitionsRequest, add_
     return results, dropDown
 
 
-def parse_metadata_response(request: MetadataRequest, add_api_log: Callable) -> tuple:
+def parse_metadata_response(request: MetadataRequest, add_api_log: Callable | None = None) -> tuple:
     """Handle METADATA request and return UI-friendly response."""
     response: MetadataResponse = handle_request(request) # type: ignore
-    dropDown = add_api_log("MetadataResponse", response)
+    dropDown = None
+    if add_api_log:
+        dropDown = add_api_log("MetadataResponse", response)
 
     topics_data = []
     total_partitions = 0
@@ -399,11 +524,15 @@ def parse_metadata_response(request: MetadataRequest, add_api_log: Callable) -> 
 
 def parse_fetch_response(request: FetchRequest, add_api_log: Callable) -> tuple:
     """Handle FETCH request and return UI-friendly response."""
+    
+    from .api import convert_uuid_to_topic_name
+
     response: FetchResponse = handle_request(request) # type: ignore
     dropDown = add_api_log("FetchResponse", response)
 
     results = []
     for fetch_response in response.responses:
+        # Convert topic UUID to name
         topic_name = convert_uuid_to_topic_name(fetch_response.topic_id)
         for partition_data in fetch_response.partitions:
             for record_batch in partition_data.records:

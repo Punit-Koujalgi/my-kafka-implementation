@@ -7,8 +7,8 @@ from typing import Self
 import time
 from pprint import pprint
 
-from app.protocol.request import Request, decode_request
-from app.protocol.response import Response, handle_request
+from kafka_server.protocol.request import Request, decode_request
+from kafka_server.protocol.response import Response, handle_request
 
 
 class KafkaServer:
@@ -26,7 +26,8 @@ class KafkaServer:
                 try:
                     request: Request = await handler.receive_request()
                     pprint(f"Received request: {request}")
-                except Exception as _:
+                except Exception as e:
+                    print(e)
                     break
 
                 response: Response = handle_request(request)

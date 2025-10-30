@@ -91,9 +91,9 @@ class PartitionProduceData:
     @classmethod
     def decode(cls, readable: Readable) -> typing.Self:
         index = decode_int32(readable)
-        print(f"[DEBUG] PartitionProduceData: index={index}")
+        # print(f"[DEBUG] PartitionProduceData: index={index}")
         records = decode_compact_nullable_bytes(readable)
-        print(f"[DEBUG] PartitionProduceData: records length={len(records) if records else 0}")
+        # print(f"[DEBUG] PartitionProduceData: records length={len(records) if records else 0}")
         data = cls(
             index=index,
             records=records,
