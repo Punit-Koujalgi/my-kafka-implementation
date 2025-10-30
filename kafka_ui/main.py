@@ -1,5 +1,4 @@
 import gradio as gr
-from httpcore import request
 import pandas as pd
 from typing import List, Dict, Any
 from dataclasses import dataclass, asdict, is_dataclass
@@ -8,18 +7,45 @@ import time
 import threading
 import os
 import glob
+import sys
+
+# Add parent directory to path to import sibling modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from kafka_client.client_utilities import *
 from kafka_client.request_builder import *
 from kafka_client.response_parser import *
 from kafka_client.api import get_all_topic_names
-from .constants import *
+from kafka_ui.constants import *
 
 # Global variables for real-time streaming
 streaming_active = False
 streaming_thread = None
 streaming_lock = threading.Lock()
 streaming_offsets = {}  # Track offsets per topic-partition
+
+
+def cleanup_kafka_data():
+    """Clean up Kafka data files in /tmp/kraft-combined-logs/"""
+    import shutil
+    
+    kafka_data_dir = "/tmp/kraft-combined-logs"
+    
+    try:
+        if os.path.exists(kafka_data_dir):
+            # Remove all contents but keep the directory
+            for item in os.listdir(kafka_data_dir):
+                item_path = os.path.join(kafka_data_dir, item)
+                if os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
+            
+            return "✅ Kafka data cleaned successfully! All files in /tmp/kraft-combined-logs/ have been removed."
+        else:
+            return "⚠️ Kafka data directory /tmp/kraft-combined-logs/ does not exist."
+    except Exception as e:
+        return f"❌ Error cleaning Kafka data: {str(e)}"
 
 
 def connect_to_kafka():
@@ -390,6 +416,7 @@ def consume_messages(streaming_toggle_btn):
 
 def get_log_details(selected_log):
     """Get details of selected log"""
+
     api_log_output = "Select a log entry to view details"
     if selected_log and selected_log != "No requests yet!":
         api_log_output = f"{selected_log}\n{api_request_tracker[selected_log]}".replace("```", "")
@@ -406,7 +433,7 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
     with gr.Row():
         with gr.Column(scale=8):
             gr.Markdown("# 🚀 **Kafka Broker Management UI**")
-        with gr.Column():
+        # with gr.Column():
             connection_status = gr.Markdown("🔄 **Connecting to Kafka Broker...**")
     
     # Main content area
@@ -423,6 +450,7 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
                     with gr.Row():
                         refresh_overview = gr.Button("🔄 Refresh Overview", variant="primary", elem_id="refresh-button")
                         download_data_btn = gr.Button("📥 Download Kafka Data", variant="secondary")
+                        cleanup_data_btn = gr.Button("🗑️ Cleanup Kafka Data", variant="stop")
                     
                     overview_table = gr.Dataframe(
                         headers=["Topic Name", "Topic ID", "Partition", "Records"],
@@ -651,27 +679,36 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
             
             log_details = gr.Textbox("Select a log entry to view details", lines=20, label="Log Details", max_lines=20, autoscroll=False)
             # log_details = gr.HTML("Select a log entry to view details", elem_id="log-details", label="Log Details", min_height=400, max_height=400)
+    
+    # Cleanup warning section
+    with gr.Column(visible=False) as cleanup_warning_modal:
+
+        gr.Markdown(WARNING_MESSAGE)
+        
+        with gr.Row():
+            cleanup_confirm_btn = gr.Button("🗑️ Yes, Delete All Data", variant="stop")
+            cleanup_cancel_btn = gr.Button("❌ Cancel", variant="secondary")
             
-            def add_api_log(action, details):
-                """Add API call to logs"""
+    def add_api_log(action, details):
+        """Add API call to logs"""
 
-                if is_dataclass(details):
-                    details = asdict(details) # type: ignore
-                    
-                global api_logs
-                timestamp = time.strftime("%H:%M:%S")
-                api_logs.insert(0, f"[{timestamp}] {action}")
-                api_request_tracker[f"[{timestamp}] {action}"] = f"```\n{pformat(details, indent=2, width=80)}\n```"
+        if is_dataclass(details):
+            details = asdict(details) # type: ignore
+            
+        global api_logs
+        timestamp = time.strftime("%H:%M:%S")
+        api_logs.insert(0, f"[{timestamp}] {action}")
+        api_request_tracker[f"[{timestamp}] {action}"] = f"```\n{pformat(details, indent=2, width=80)}\n```"
 
-                print(action)
-                return gr.update(choices=api_logs[0:10], value=api_logs[0] if len(api_logs) > 0 else "")  # Update dropdown with latest log
+        print(action)
+        return gr.update(choices=api_logs[0:15], value=api_logs[0] if len(api_logs) > 0 else "")  # Update dropdown with latest log
 
-            # Update logs dropdown when API calls are made
-            api_logs_dropdown.change(
-                get_log_details,
-                inputs=[api_logs_dropdown],
-                outputs=[log_details]
-            )
+    # Update logs dropdown when API calls are made
+    api_logs_dropdown.change(
+        get_log_details,
+        inputs=[api_logs_dropdown],
+        outputs=[log_details]
+    )
 
     refresh_overview.click(
         update_connection_status,
@@ -691,7 +728,35 @@ with gr.Blocks(title="🚀 Kafka Broker Management UI",
     )
 
     download_data_btn.click(
-        lambda: gr.Info("To download Kafka data files, go to Downloads Tab (maybe in overflow menu) select a file from the dropdown and click the 'Download' button below it."),
+        lambda: gr.Info("To download Kafka data files, go to Downloads Tab (maybe in overflow menu) select a topic from the dropdown and click the 'Download' button below it."),
+    )
+
+    cleanup_data_btn.click(
+        lambda: gr.update(visible=True),
+        outputs=[cleanup_warning_modal]
+    ).then(
+        lambda: gr.Info("Read Warning message at the end of the page and select 'Yes' to proceed!")
+	)
+
+    def handle_cleanup_confirm():
+        result = cleanup_kafka_data()
+        gr.Info(result)
+        return gr.update(visible=False)
+
+    cleanup_confirm_btn.click(
+        handle_cleanup_confirm,
+        outputs=[cleanup_warning_modal]
+    ).then(
+        load_overview,
+        outputs=[total_topics, total_partitions, total_records, overview_table, api_logs_dropdown]
+    ).then(
+        refresh_topic_dropdowns,
+        outputs=[describe_topic_input, produce_topic_input, consume_topic_input]
+    )
+
+    cleanup_cancel_btn.click(
+        lambda: gr.update(visible=False),
+        outputs=[cleanup_warning_modal]
     )
 
     create_topics_btn.click(

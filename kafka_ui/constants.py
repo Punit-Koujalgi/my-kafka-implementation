@@ -188,3 +188,22 @@ if (document.readyState === 'loading') {
 </script>
 """
 
+WARNING_MESSAGE = """
+        ### ⚠️ **WARNING: Cleanup Kafka Data**
+        
+        This action will **permanently delete** all files in:
+        ```
+        /tmp/kraft-combined-logs/*
+        ```
+        
+        **This includes:**
+        - All topic data
+        - Partition logs  
+        - Metadata files
+        - Offset information
+        
+        **This action cannot be undone!**
+        
+        Are you sure you want to proceed?
+
+"""
