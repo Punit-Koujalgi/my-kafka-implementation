@@ -1,0 +1,6 @@
+---
+title: My-Kafka-Impl
+app_file: kafka_ui/main.py
+sdk: gradio
+sdk_version: 5.49.1
+---
